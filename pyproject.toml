@@ -29,7 +29,7 @@ dependencies = [
     "psutil>=7.0.0",
     "loguru>=0.7.3",
     "docstring-parser>=0.16",
-    "litellm>=1.65.0",
+    "litellm @ git+https://github.com/suche-ux/litellm.git@a62c0c26dc6d4e4cc9cdcf18ab4c8e966bad4bb1",
     "tenacity>=9.0.0",
     "matplotlib>=3.10.1",
     "seaborn>=0.13.2",
