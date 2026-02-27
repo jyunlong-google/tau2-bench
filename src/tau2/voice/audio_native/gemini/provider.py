@@ -1105,7 +1105,7 @@ class GeminiLiveProvider:
                 GeminiSessionResumptionEvent(
                     type="session_resumption",
                     new_handle=new_handle,
-                    resumable=resumable,
+                    resumable=bool(resumable),
                 )
             )
 
