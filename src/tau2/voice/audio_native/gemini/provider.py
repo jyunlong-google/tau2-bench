@@ -317,6 +317,10 @@ class GeminiLiveProvider:
         """
         return self._session is not None
 
+    @property
+    def goaway_received(self) -> bool:
+        return self._go_away_received
+
     @websocket_retry
     async def connect(
         self,
@@ -544,6 +548,20 @@ class GeminiLiveProvider:
         except Exception as e:
             logger.error(f"Session resumption failed: {e}")
             return False
+
+    async def handle_goaway_reconnect(self) -> bool:
+        """Handles reconnection from the adapter when GoAway is received."""
+        logger.warning("GoAway: initiating immediate reconnection")
+        await self._stop_receive_loop()
+        success = await self._reconnect_with_resumption()
+        if success:
+            await self._start_receive_loop()
+            logger.info(
+                "GoAway: reconnection complete, receive loop restarted"
+            )
+        else:
+            logger.error("GoAway: reconnection failed")
+        return success
 
     # Fields not supported by Gemini FunctionDeclaration when using `parameters`
     _UNSUPPORTED_SCHEMA_FIELDS = {

@@ -351,6 +351,17 @@ class DiscreteTimeGeminiAdapter(DiscreteTimeAdapter):
 
     async def _async_run_tick(self, user_audio: bytes, tick_number: int) -> TickResult:
         """Async tick execution."""
+        # Handle reconnection on GoAway
+        if self.provider.goaway_received:
+            logger.info(
+                "GoAway flag set, reconnecting before tick %d", tick_number
+            )
+            reconnect_success = await self.provider.handle_goaway_reconnect()
+            if not reconnect_success:
+                raise RuntimeError(
+                    f"Failed to reconnect after GoAway on tick {tick_number}"
+                )
+
         # Send any pending tool results first
         for call_id, name, result_str, request_response in self._pending_tool_results:
             await self.provider.send_tool_response(call_id, name, result_str)
