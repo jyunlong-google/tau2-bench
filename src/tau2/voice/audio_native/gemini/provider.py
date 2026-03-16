@@ -6,7 +6,6 @@ Uses the google-genai library for real-time bidirectional audio communication.
 
 import asyncio
 import os
-import subprocess
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -172,9 +171,19 @@ class GeminiLiveProvider:
         if self.api_key:
             # API key mode (AI Studio)
             self.use_vertex_ai = False
-            self.project_id = None
+            self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
             self.location = None
             self.model = model or self.DEFAULT_MODEL
+            # Try to get OAuth credentials from ADC for additional logging
+            self._adc_credentials = None
+            try:
+                import google.auth
+                import google.auth.transport.requests
+                self._adc_credentials, _ = google.auth.default()
+                self._adc_credentials.refresh(google.auth.transport.requests.Request())
+                logger.info("Got ADC OAuth credentials for additional logging")
+            except Exception as e:
+                logger.debug(f"No ADC credentials available: {e}")
             logger.info("Using Gemini AI Studio with API key")
 
         elif has_service_account_json:
@@ -296,22 +305,22 @@ class GeminiLiveProvider:
                         f"Created Vertex AI client for project {self.project_id}"
                     )
                 else:
-                    PROJECT_ID = "docker-rlef-exploration"
-                    result = subprocess.run(["gcloud", "auth", "application-default", "print-access-token"], capture_output=True, text=True, check=True)
-                    OAUTH_TOKEN = result.stdout.rstrip()
-                    headers = {
-                       'Content-Type': 'application/json',
-                       'Authorization': f'Bearer {OAUTH_TOKEN}',
-                       'X-Goog-User-Project': PROJECT_ID,
-                    }
-                    logger.debug("Gemini headers: " + str(headers))
                     # API key mode
+                    http_options={"api_version": "v1beta"}
+                    if self._adc_credentials and self.project_id:
+                        # Refresh token to ensure it's valid
+                        import google.auth.transport.requests
+                        self._adc_credentials.refresh(google.auth.transport.requests.Request())
+                        http_options.update({
+                            "headers": {
+                                "Content-Type": "application/json",
+                                "Authorization": "Bearer " + self._adc_credentials.token,
+                                "X-Goog-User-Project": self.project_id,
+                            },
+                            "base_url": "https://generativelanguage.googleapis.com",
+                        })
                     self._client = genai.Client(
-                        http_options={
-                          'headers': headers,
-                          'base_url': 'https://generativelanguage.googleapis.com',
-                          'timeout': 600
-                        },
+                        http_options=http_options,
                         api_key=self.api_key,
                     )
                     logger.debug("Created Gemini AI Studio client with API key")
