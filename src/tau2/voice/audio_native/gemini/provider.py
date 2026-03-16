@@ -475,6 +475,14 @@ class GeminiLiveProvider:
                 )
                 logger.info("Manual VAD mode: automatic activity detection disabled")
 
+            # Enable thinking for native audio models (only supported on 3.1+)
+            if "gemini-3" in self.model:
+                config_kwargs["thinking_config"] = types.ThinkingConfig(
+                    thinking_level="HIGH",
+                )
+
+            logger.info(f"LiveConnectConfig kwargs: {config_kwargs}")
+
             config = types.LiveConnectConfig(**config_kwargs)
 
             # Connect to the API - IMPORTANT: keep reference to context manager
