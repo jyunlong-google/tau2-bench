@@ -8,6 +8,7 @@
         "update_task_with_initialization_data",
         "update_task_with_initialization_actions",
         "update_task_with_history_and_env_assertions",
-        "impossible_task_1"
+        "impossible_task_1",
+        "long_casual_conversation_1"
     ]
 }

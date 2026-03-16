@@ -341,5 +341,24 @@
       ], 
       "reward_basis": ["DB", "ACTION"]
     }
+  },
+  {
+    "id": "long_casual_conversation_1",
+    "description": {
+      "purpose": "Produce a long multi-turn session for stress testing",
+      "notes": "Chatty user who creates and manages multiple tasks over many turns. Designed to generate 15+ exchanges by being indecisive, asking questions, and gradually revealing information."
+    },
+    "user_scenario": {
+      "persona": "Friendly, chatty, and somewhat disorganized person who thinks out loud. You tend to go on tangents, ask clarifying questions, and change your mind. You use casual language with fillers like 'um', 'oh actually', 'hmm let me think'. You never give all the information at once — you reveal details gradually across many turns. You are user_1.",
+      "instructions": "You need help organizing your work tasks. Go through ALL of these steps across many separate messages (do NOT rush, take your time with each):\n\n1. Start by greeting the agent and saying you need help getting organized. Ask what the agent can do for you.\n2. Ask who is in the system — you want to check if your account exists.\n3. Say you need to create a task for a team meeting. But don't give the title right away — first ask the agent what information is needed.\n4. After learning what's needed, provide your user ID (user_1) and the title 'Weekly Team Standup'. Chat about why this meeting is important.\n5. Now say you actually need another task too — 'Quarterly Budget Review'. Create that one as well.\n6. Oh wait, you also forgot about a third task — 'Update Documentation'. Ask the agent to create that too.\n7. Now ask about your first task (task_1 from the initial DB). Ask what status it's in.\n8. You want to mark task_1 as completed since you finished it yesterday. Ask the agent to update it.\n9. Actually, second-guess yourself — ask the agent if 'completed' is a valid status, or if there are other options.\n10. Confirm you want task_1 marked as completed.\n11. Now ask about how many tasks you have total. Chat about feeling overwhelmed.\n12. Ask the agent to also mark the 'Weekly Team Standup' task as completed since the meeting already happened.\n13. Thank the agent and say goodbye, but then come back with 'oh one more thing' — ask if there's a way to delete tasks. When told no, accept it gracefully.\n\nRemember: be chatty and conversational. React to what the agent says, share small personal anecdotes about your work, and take your time revealing information."
+    },
+    "ticket": "User wants to create multiple tasks, update task statuses, and manage their task list over an extended conversation.",
+    "evaluation_criteria": {
+      "nl_assertions": [
+        "The agent helped the user create at least 2 new tasks",
+        "The agent updated the status of at least one task to completed",
+        "The conversation included multiple back-and-forth exchanges beyond simple request-response"
+      ]
+    }
   }
 ]
