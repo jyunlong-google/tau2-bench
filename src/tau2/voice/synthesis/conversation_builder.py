@@ -224,7 +224,10 @@ def get_audio_datas_from_messages(
         if message.is_tool_call():
             # Tool calls don't have audio in half-duplex
             continue
-        if message.is_audio:
+        # Check for audio content (is_audio flag OR audio_content present)
+        # Half-duplex agents may set is_audio=False with audio_content populated
+        has_audio = message.is_audio or message.audio_content is not None
+        if has_audio:
             if message.audio_content is None and message.audio_path is None:
                 raise ValueError(f"Message {message.id} has no audio content or path")
             if message.role not in audio_datas:
@@ -250,6 +253,8 @@ def _generate_half_duplex_audio(
     Generate audio for half-duplex simulation.
 
     In half-duplex mode, turns are sequential and we merge audio with silence gaps.
+    Also generates Audacity label files (user_labels.txt, assistant_labels.txt)
+    with timestamps aligned to the combined both.wav audio.
 
     Args:
         simulation: Simulation run containing messages with audio data.
@@ -270,14 +275,83 @@ def _generate_half_duplex_audio(
     if len(audio_datas["user"]) == 0 and len(audio_datas["assistant"]) == 0:
         return merged_audio_datas
 
+    # Build a role+text map from messages for label generation
+    # Map (role, turn_idx) -> transcript text
+    turn_transcripts: dict[tuple[str, int], str] = {}
+    for message in simulation.messages:
+        if not isinstance(message, ParticipantMessageBase):
+            continue
+        if message.is_tool_call():
+            continue
+        if message.turn_idx is not None and message.content:
+            turn_transcripts[(message.role, message.turn_idx)] = message.content
+
     # Merge "both" - interleaved by turn_idx
+    silence_ms = 500
     if len(audio_datas["user"]) > 0 and len(audio_datas["assistant"]) > 0:
         all_audio_datas = audio_datas["user"] + audio_datas["assistant"]
         sorted_by_turn_idx = sorted(all_audio_datas, key=lambda x: x[0])
         audio_only = [audio_data for _, _, audio_data in sorted_by_turn_idx]
         merged_audio_datas["both"] = merge_audio_datas(
-            audio_only, silence_duration_ms=500
+            audio_only, silence_duration_ms=silence_ms
         )
+
+        # Generate labels aligned to both.wav timestamps
+        # Track cumulative position as we lay out turns sequentially
+        user_labels: list[str] = []
+        assistant_labels: list[str] = []
+        cursor_sec = 0.0
+
+        for i, (turn_idx, _timestamp, audio_data) in enumerate(sorted_by_turn_idx):
+            duration_sec = audio_data.duration
+            start_sec = cursor_sec
+            end_sec = cursor_sec + duration_sec
+
+            # Determine role from which list this audio came from
+            role = None
+            for r in ["user", "assistant"]:
+                for t_idx, _, _ in audio_datas[r]:
+                    if t_idx == turn_idx:
+                        role = r
+                        break
+                if role:
+                    break
+
+            # Get transcript text
+            transcript = ""
+            if role and turn_idx is not None:
+                transcript = turn_transcripts.get((role, turn_idx), "")
+
+            # Clean text for label
+            label_text = transcript.replace("\n", " ").replace("\t", " ").strip()
+            if len(label_text) > 200:
+                label_text = label_text[:197] + "..."
+
+            label_line = f"{start_sec:.3f}\t{end_sec:.3f}\t{label_text}"
+            if role == "user":
+                user_labels.append(label_line)
+            elif role == "assistant":
+                assistant_labels.append(label_line)
+
+            # Advance cursor: audio duration + silence gap (except after last turn)
+            cursor_sec = end_sec
+            if i < len(sorted_by_turn_idx) - 1:
+                cursor_sec += silence_ms / 1000.0
+
+        # Write label files
+        if user_labels:
+            label_path = output_dir / "user_labels.txt"
+            with open(label_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(user_labels))
+            logger.debug(f"Generated {len(user_labels)} user labels: {label_path}")
+
+        if assistant_labels:
+            label_path = output_dir / "assistant_labels.txt"
+            with open(label_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(assistant_labels))
+            logger.debug(
+                f"Generated {len(assistant_labels)} assistant labels: {label_path}"
+            )
 
     # Merge individual roles
     for role, role_audio_datas in audio_datas.items():

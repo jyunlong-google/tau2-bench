@@ -18,7 +18,11 @@ from loguru import logger
 from tau2.agent.base_agent import HalfDuplexVoiceAgent
 from tau2.agent.discrete_time_audio_native_agent import DiscreteTimeAudioNativeAgent
 from tau2.agent.llm_agent import LLMAgent, LLMGTAgent, LLMSoloAgent
-from tau2.agent.voice_agent import VoiceLLMAgent, VoiceLLMGTAgent
+from tau2.agent.voice_agent import (
+    GeminiLiveHalfDuplexAgent,
+    VoiceLLMAgent,
+    VoiceLLMGTAgent,
+)
 from tau2.data_model.persona import InterruptTendency, PersonaConfig, Verbosity
 from tau2.data_model.simulation import (
     AgentInfo,
@@ -1160,6 +1164,30 @@ def run_task(
                 llm_args=llm_args_agent,
                 voice_settings=agent_voice_settings,
             )
+        elif issubclass(AgentConstructor, GeminiLiveHalfDuplexAgent):
+            if agent_voice_settings is None:
+                raise ValueError(
+                    "agent_voice_settings is required for GeminiLiveHalfDuplexAgent. "
+                    "Use --voice-enabled flag or provide agent_voice_settings."
+                )
+            # Set voice_settings.output_dir so agent saves audio under the voice folder
+            if verbose_logs and save_dir:
+                agent_voice_output_dir = (
+                    save_dir
+                    / "tasks"
+                    / f"task_{task.id}"
+                    / f"sim_{simulation_id}"
+                    / "voice"
+                )
+                agent_voice_output_dir.mkdir(parents=True, exist_ok=True)
+                agent_voice_settings.output_dir = agent_voice_output_dir
+            agent_instance = AgentConstructor(
+                tools=environment.get_tools(),
+                domain_policy=environment.get_policy(),
+                model=llm_agent,
+                voice_settings=agent_voice_settings,
+                llm_args=llm_args_agent,
+            )
         elif issubclass(AgentConstructor, LLMAgent):
             agent_instance = AgentConstructor(
                 tools=environment.get_tools(),
@@ -1304,6 +1332,29 @@ def run_task(
                 audio_native_config=audio_native_config,
                 audio_debug=audio_debug,
             )
+
+        # Save combined audio for half-duplex voice agent (both.wav + labels)
+        if (
+            audio_native_config is None
+            and save_dir
+            and verbose_logs
+            and isinstance(agent_instance, GeminiLiveHalfDuplexAgent)
+        ):
+            task_audio_dir = (
+                save_dir
+                / "tasks"
+                / f"task_{task.id}"
+                / f"sim_{simulation_id}"
+                / "audio"
+            )
+            task_audio_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                generate_simulation_audio(simulation, task_audio_dir)
+                logger.debug(f"Half-duplex audio saved to: {task_audio_dir}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to save half-duplex audio for task {task.id}: {e}"
+                )
 
         logger.info(
             f"FINISHED SIMULATION: Domain: {domain}, Task: {task.id}, Agent: {agent_instance.__class__.__name__}, User: {user_instance.__class__.__name__}. Reward: {reward_info.reward}"

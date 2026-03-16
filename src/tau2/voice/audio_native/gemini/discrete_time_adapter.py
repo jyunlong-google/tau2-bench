@@ -354,9 +354,9 @@ class DiscreteTimeGeminiAdapter(DiscreteTimeAdapter):
         # Handle reconnection on GoAway
         if self.provider.goaway_received:
             logger.info(
-                "GoAway flag set, reconnecting before tick %d", tick_number
+                f"GoAway flag set, reconnecting before tick {tick_number}"
             )
-            reconnect_success = await self.provider.handle_goaway_reconnect()
+            reconnect_success = await self.provider.handle_reconnect()
             if not reconnect_success:
                 raise RuntimeError(
                     f"Failed to reconnect after GoAway on tick {tick_number}"

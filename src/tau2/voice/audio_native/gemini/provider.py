@@ -143,7 +143,7 @@ class GeminiLiveProvider:
                 If False, manually resolve $ref/$defs before passing.
             max_resumptions: Maximum number of session resumptions to attempt
                 when the WebSocket connection is closed. Set to 0 to disable
-                session resumption. Defaults to 3.
+                session resumption. Set to -1 for unlimited. Defaults to 3.
             resume_only_on_timeout: If True (default), only attempt resumption
                 when the connection closes due to the planned ~10 minute timeout
                 (indicated by a GoAway message). If False, attempt resumption
@@ -443,14 +443,14 @@ class GeminiLiveProvider:
             )
 
             # Add session resumption config (enables receiving resumption handles)
-            if self._max_resumptions > 0:
+            if self._max_resumptions != 0:
                 config_kwargs["session_resumption"] = types.SessionResumptionConfig(
                     handle=_resumption_handle,  # None for fresh session, handle for resume
                 )
                 if _resumption_handle:
                     logger.info(
                         f"Attempting session resumption "
-                        f"({self._resumption_count}/{self._max_resumptions})"
+                        f"({self._resumption_count}/{'∞' if self._max_resumptions < 0 else self._max_resumptions})"
                     )
 
             # Add input transcription config if enabled
@@ -463,6 +463,17 @@ class GeminiLiveProvider:
             config_kwargs["output_audio_transcription"] = (
                 types.AudioTranscriptionConfig()
             )
+
+            # Disable automatic VAD for manual mode (client controls turns)
+            if vad_config.mode == GeminiVADMode.MANUAL:
+                config_kwargs["realtime_input_config"] = (
+                    types.RealtimeInputConfig(
+                        automatic_activity_detection=types.AutomaticActivityDetection(
+                            disabled=True
+                        )
+                    )
+                )
+                logger.info("Manual VAD mode: automatic activity detection disabled")
 
             config = types.LiveConnectConfig(**config_kwargs)
 
@@ -534,7 +545,7 @@ class GeminiLiveProvider:
             logger.error("Cannot resume: no resumption handle available")
             return False
 
-        if self._resumption_count >= self._max_resumptions:
+        if self._max_resumptions >= 0 and self._resumption_count >= self._max_resumptions:
             logger.error(
                 f"Cannot resume: max resumptions ({self._max_resumptions}) exceeded"
             )
@@ -547,7 +558,7 @@ class GeminiLiveProvider:
         self._resumption_count += 1
         logger.warning(
             f"Attempting session resumption "
-            f"({self._resumption_count}/{self._max_resumptions}) "
+            f"({self._resumption_count}/{'∞' if self._max_resumptions < 0 else self._max_resumptions}) "
             f"with handle: {self._resumption_handle[:20]}..."
         )
 
@@ -572,18 +583,16 @@ class GeminiLiveProvider:
             logger.error(f"Session resumption failed: {e}")
             return False
 
-    async def handle_goaway_reconnect(self) -> bool:
-        """Handles reconnection from the adapter when GoAway is received."""
-        logger.warning("GoAway: initiating immediate reconnection")
+    async def handle_reconnect(self) -> bool:
+        """Handles reconnection from the latest resumable handle."""
+        logger.warning("Initiating reconnection")
         await self._stop_receive_loop()
         success = await self._reconnect_with_resumption()
         if success:
             await self._start_receive_loop()
-            logger.info(
-                "GoAway: reconnection complete, receive loop restarted"
-            )
+            logger.info("Reconnection complete, receive loop restarted")
         else:
-            logger.error("GoAway: reconnection failed")
+            logger.error("Reconnection failed")
         return success
 
     # Fields not supported by Gemini FunctionDeclaration when using `parameters`
@@ -764,6 +773,11 @@ class GeminiLiveProvider:
                     if self._stop_receive:
                         break
                     logger.error(f"Error in receive loop: {type(e).__name__}: {e}")
+                    logger.error(f"Error details - type: {type(e)}, args: {e.args}")
+                    if hasattr(e, 'status_code'):
+                        logger.error(f"Status code: {e.status_code}")
+                    if hasattr(e, 'response_json'):
+                        logger.error(f"Response JSON: {e.response_json}")
 
                     # For connection closed errors, attempt resumption
                     if "ConnectionClosed" in type(e).__name__:
@@ -771,9 +785,9 @@ class GeminiLiveProvider:
 
                         # Check if resumption is allowed
                         can_resume = (
-                            self._max_resumptions > 0
+                            self._max_resumptions != 0
                             and self._resumption_handle is not None
-                            and self._resumption_count < self._max_resumptions
+                            and (self._max_resumptions < 0 or self._resumption_count < self._max_resumptions)
                         )
 
                         # If resume_only_on_timeout is enabled, only resume if
@@ -862,6 +876,70 @@ class GeminiLiveProvider:
         await self._session.send_realtime_input(audio=audio_blob)
         logger.debug(f"Sent {len(audio_data)} bytes of audio")
 
+    async def send_audio_with_end(self, audio_data: bytes) -> None:
+        """Send audio data then signal audio_stream_end.
+
+        For half-duplex mode with automatic VAD: sends the complete user
+        utterance audio, then signals end-of-stream so the server triggers
+        turn_complete without needing trailing silence.
+
+        Audio should be in 16kHz PCM16 mono format.
+
+        Args:
+            audio_data: Raw audio bytes in 16kHz PCM16 format.
+
+        Raises:
+            RuntimeError: If not connected to the API.
+        """
+        await self.send_audio(audio_data)
+        await asyncio.sleep(0.3)
+        await self._session.send_realtime_input(audio_stream_end=True)
+        logger.debug("Sent audio_stream_end signal")
+
+    async def send_activity_start(self) -> None:
+        """Signal the start of user speech activity.
+
+        For manual VAD mode (automatic_activity_detection disabled):
+        must be called before sending audio chunks, paired with
+        send_activity_end() after all audio is sent.
+
+        Raises:
+            RuntimeError: If not connected to the API.
+        """
+        if not self.is_connected:
+            raise RuntimeError("Not connected to API. Call connect() first.")
+
+        # Start receive loop lazily on first audio send
+        if self._receive_task is None:
+            logger.debug("Starting receive loop on first audio send")
+            await self._start_receive_loop()
+
+        from google.genai import types
+
+        await self._session.send_realtime_input(
+            activity_start=types.ActivityStart()
+        )
+        logger.debug("Sent activity_start signal")
+
+    async def send_activity_end(self) -> None:
+        """Signal the end of user speech activity.
+
+        For manual VAD mode: must be called after all audio chunks
+        have been sent, paired with a prior send_activity_start().
+
+        Raises:
+            RuntimeError: If not connected to the API.
+        """
+        if not self.is_connected:
+            raise RuntimeError("Not connected to API. Call connect() first.")
+
+        from google.genai import types
+
+        await self._session.send_realtime_input(
+            activity_end=types.ActivityEnd()
+        )
+        logger.debug("Sent activity_end signal")
+
     async def send_text(self, text: str, end_of_turn: bool = True) -> None:
         """Send a text message to the session.
 
@@ -897,6 +975,11 @@ class GeminiLiveProvider:
             raise RuntimeError("Not connected to API. Call connect() first.")
 
         from google.genai import types
+
+        logger.info(
+            f"Sending tool response: call_id={call_id!r}, name={name!r}, "
+            f"result_len={len(result)}, result_preview={result[:200]!r}"
+        )
 
         function_response = types.FunctionResponse(
             id=call_id,

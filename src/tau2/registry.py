@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from tau2.agent.base_agent import FullDuplexAgent, HalfDuplexAgent
 from tau2.agent.discrete_time_audio_native_agent import DiscreteTimeAudioNativeAgent
 from tau2.agent.llm_agent import LLMAgent, LLMGTAgent, LLMSoloAgent
-from tau2.agent.voice_agent import VoiceLLMAgent, VoiceLLMGTAgent
+from tau2.agent.voice_agent import GeminiLiveHalfDuplexAgent, VoiceLLMAgent, VoiceLLMGTAgent
 from tau2.data_model.tasks import Task
 from tau2.domains.airline.environment import (
     get_environment as airline_domain_get_environment,
@@ -231,6 +231,9 @@ try:
     registry.register_agent(LLMSoloAgent, "llm_agent_solo")
     registry.register_agent(VoiceLLMAgent, "voice_llm_agent")
     registry.register_agent(VoiceLLMGTAgent, "voice_llm_agent_gt")
+    registry.register_agent(
+        GeminiLiveHalfDuplexAgent, "gemini_live_half_duplex_agent"
+    )
     registry.register_agent(
         DiscreteTimeAudioNativeAgent, "discrete_time_audio_native_agent"
     )
