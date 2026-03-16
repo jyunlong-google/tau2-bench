@@ -264,6 +264,22 @@ def add_run_args(parser):
         help=f"Speech complexity level for audio effects. Default is '{DEFAULT_SPEECH_COMPLEXITY}'.",
     )
 
+    # Half-duplex voice mode arguments
+    parser.add_argument(
+        "--voice-enabled",
+        action="store_true",
+        default=False,
+        help="Enable half-duplex voice mode. The user simulator synthesizes text-to-speech "
+        "and the agent transcribes speech-to-text before processing with the LLM.",
+    )
+    parser.add_argument(
+        "--voice-transcription-model",
+        type=str,
+        default=None,
+        help="Transcription model to use for half-duplex voice mode (e.g., 'gpt-4o-transcribe'). "
+        "Only takes effect when --voice-enabled is set.",
+    )
+
     # Audio-native: Sample rates
     parser.add_argument(
         "--pcm-sample-rate",
@@ -439,39 +455,59 @@ def main():
 
         set_llm_log_mode(args.llm_log_mode)
 
-        return run_domain(
-            RunConfig(
-                domain=args.domain,
-                task_set_name=args.task_set_name,
-                task_split_name=args.task_split_name,
-                task_ids=args.task_ids,
-                num_tasks=args.num_tasks,
-                agent=args.agent,
-                llm_agent=args.agent_llm,
-                llm_args_agent=args.agent_llm_args,
-                user=args.user,
-                llm_user=args.user_llm,
-                llm_args_user=args.user_llm_args,
-                num_trials=args.num_trials,
-                max_steps=args.max_steps,
-                max_errors=args.max_errors,
-                save_to=args.save_to,
-                max_concurrency=args.max_concurrency,
-                seed=args.seed,
-                log_level=args.log_level,
-                user_persona_config=user_persona_config,
-                enforce_communication_protocol=args.enforce_communication_protocol,
-                speech_complexity=args.speech_complexity,
-                audio_native_config=audio_native_config,
-                verbose_logs=args.verbose_logs,
-                audio_debug=getattr(args, "audio_debug", False),
-                max_retries=args.max_retries,
-                retry_delay=args.retry_delay,
-                auto_resume=args.auto_resume,
-                auto_review=args.auto_review,
-                review_mode=args.review_mode,
-            )
+        run_config = RunConfig(
+            domain=args.domain,
+            task_set_name=args.task_set_name,
+            task_split_name=args.task_split_name,
+            task_ids=args.task_ids,
+            num_tasks=args.num_tasks,
+            agent=args.agent,
+            llm_agent=args.agent_llm,
+            llm_args_agent=args.agent_llm_args,
+            user=args.user,
+            llm_user=args.user_llm,
+            llm_args_user=args.user_llm_args,
+            num_trials=args.num_trials,
+            max_steps=args.max_steps,
+            max_errors=args.max_errors,
+            save_to=args.save_to,
+            max_concurrency=args.max_concurrency,
+            seed=args.seed,
+            log_level=args.log_level,
+            user_persona_config=user_persona_config,
+            enforce_communication_protocol=args.enforce_communication_protocol,
+            speech_complexity=args.speech_complexity,
+            audio_native_config=audio_native_config,
+            verbose_logs=args.verbose_logs,
+            audio_debug=getattr(args, "audio_debug", False),
+            max_retries=args.max_retries,
+            retry_delay=args.retry_delay,
+            auto_resume=args.auto_resume,
+            auto_review=args.auto_review,
+            review_mode=args.review_mode,
         )
+
+        # Build voice settings for half-duplex voice mode
+        if args.voice_enabled:
+            from tau2.data_model.voice import VoiceSettings
+            from tau2.voice.synthesis.synthesize import SynthesisConfig
+            from tau2.voice.transcription.transcribe import TranscriptionConfig
+
+            # Agent gets transcription config (speech-to-text)
+            transcription_kwargs = {}
+            if args.voice_transcription_model:
+                transcription_kwargs["model"] = args.voice_transcription_model
+            run_config.agent_voice_settings = VoiceSettings(
+                synthesis_config=None,
+                transcription_config=TranscriptionConfig(**transcription_kwargs),
+            )
+            # User gets synthesis config (text-to-speech)
+            run_config.user_voice_settings = VoiceSettings(
+                synthesis_config=SynthesisConfig(),
+                transcription_config=None,
+            )
+
+        return run_domain(run_config)
 
     run_parser.set_defaults(func=run_command)
 

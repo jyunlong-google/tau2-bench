@@ -15,8 +15,10 @@ from typing import Optional
 
 from loguru import logger
 
+from tau2.agent.base_agent import HalfDuplexVoiceAgent
 from tau2.agent.discrete_time_audio_native_agent import DiscreteTimeAudioNativeAgent
 from tau2.agent.llm_agent import LLMAgent, LLMGTAgent, LLMSoloAgent
+from tau2.agent.voice_agent import VoiceLLMAgent, VoiceLLMGTAgent
 from tau2.data_model.persona import InterruptTendency, PersonaConfig, Verbosity
 from tau2.data_model.simulation import (
     AgentInfo,
@@ -41,6 +43,7 @@ from tau2.registry import RegistryInfo, registry
 from tau2.user.user_simulator import (
     DummyUser,
     UserSimulator,
+    VoiceUserSimulator,
     get_global_user_sim_guidelines,
     get_global_user_sim_guidelines_voice,
 )
@@ -394,6 +397,8 @@ def run_domain(config: RunConfig) -> Results:
         enforce_communication_protocol=config.enforce_communication_protocol,
         speech_complexity=config.speech_complexity,
         audio_native_config=config.audio_native_config,
+        agent_voice_settings=config.agent_voice_settings,
+        user_voice_settings=config.user_voice_settings,
         verbose_logs=config.verbose_logs,
         max_retries=config.max_retries,
         retry_delay=config.retry_delay,
@@ -429,6 +434,8 @@ def run_tasks(
     enforce_communication_protocol: bool = False,
     speech_complexity: SpeechComplexity = "regular",
     audio_native_config: Optional[AudioNativeConfig] = None,
+    agent_voice_settings: Optional[VoiceSettings] = None,
+    user_voice_settings: Optional[VoiceSettings] = None,
     verbose_logs: bool = False,
     audio_debug: bool = False,
     max_retries: int = 3,
@@ -491,7 +498,6 @@ def run_tasks(
     lock = multiprocessing.Lock()
 
     # Create run-level voice settings and persona config for audio-native mode
-    user_voice_settings = None
     user_persona_config = None
     if audio_native_config is not None:
         # Base voice settings (speech_environment is per-task, set in run_task)
@@ -745,6 +751,7 @@ def run_tasks(
                     enforce_communication_protocol=enforce_communication_protocol,
                     speech_complexity=speech_complexity,
                     audio_native_config=audio_native_config,
+                    agent_voice_settings=agent_voice_settings,
                     user_voice_settings=user_voice_settings,
                     user_persona_config=user_persona_config,
                     verbose_logs=verbose_logs,
@@ -917,6 +924,7 @@ def run_task(
     enforce_communication_protocol: bool = False,
     speech_complexity: SpeechComplexity = "regular",
     audio_native_config: Optional[AudioNativeConfig] = None,
+    agent_voice_settings: Optional[VoiceSettings] = None,
     user_voice_settings: Optional[VoiceSettings] = None,
     user_persona_config: Optional[PersonaConfig] = None,
     verbose_logs: bool = False,
@@ -1123,7 +1131,36 @@ def run_task(
         UserConstructor = registry.get_user_constructor(user)
 
         # Create agent based on type
-        if issubclass(AgentConstructor, LLMAgent):
+        # NOTE: Voice agent checks must come before their base class checks
+        # because VoiceLLMAgent is a subclass of LLMAgent, etc.
+        if issubclass(AgentConstructor, VoiceLLMGTAgent):
+            if agent_voice_settings is None:
+                raise ValueError(
+                    "agent_voice_settings is required for VoiceLLMGTAgent. "
+                    "Use --voice-enabled flag or provide agent_voice_settings."
+                )
+            agent_instance = AgentConstructor(
+                tools=environment.get_tools(),
+                domain_policy=environment.get_policy(),
+                llm=llm_agent,
+                llm_args=llm_args_agent,
+                task=task,
+                voice_settings=agent_voice_settings,
+            )
+        elif issubclass(AgentConstructor, VoiceLLMAgent):
+            if agent_voice_settings is None:
+                raise ValueError(
+                    "agent_voice_settings is required for VoiceLLMAgent. "
+                    "Use --voice-enabled flag or provide agent_voice_settings."
+                )
+            agent_instance = AgentConstructor(
+                tools=environment.get_tools(),
+                domain_policy=environment.get_policy(),
+                llm=llm_agent,
+                llm_args=llm_args_agent,
+                voice_settings=agent_voice_settings,
+            )
+        elif issubclass(AgentConstructor, LLMAgent):
             agent_instance = AgentConstructor(
                 tools=environment.get_tools(),
                 domain_policy=environment.get_policy(),
@@ -1173,6 +1210,35 @@ def run_task(
         }
         if issubclass(UserConstructor, UserSimulator):
             user_kwargs["persona_config"] = user_persona_config
+
+        # Handle VoiceUserSimulator: add voice_settings with per-task speech environment
+        if issubclass(UserConstructor, VoiceUserSimulator):
+            if user_voice_settings is None:
+                raise ValueError(
+                    "user_voice_settings is required for VoiceUserSimulator. "
+                    "Use --voice-enabled flag or provide user_voice_settings."
+                )
+            task_user_voice_settings = deepcopy(user_voice_settings)
+            # Create per-task speech environment with seeded random selections
+            task_seed = (seed or 42) + hash(task.id) % 1000000
+            speech_env = create_speech_environment(
+                seed=task_seed,
+                user_voice_settings=task_user_voice_settings,
+                complexity=speech_complexity,
+            )
+            task_user_voice_settings.speech_environment = speech_env
+            # Set output dir for audio files if verbose logging is enabled
+            if verbose_logs and save_dir:
+                voice_output_dir = (
+                    save_dir
+                    / "tasks"
+                    / f"task_{task.id}"
+                    / f"sim_{simulation_id}"
+                    / "voice"
+                )
+                voice_output_dir.mkdir(parents=True, exist_ok=True)
+                task_user_voice_settings.output_dir = voice_output_dir
+            user_kwargs["voice_settings"] = task_user_voice_settings
 
         user_instance = UserConstructor(**user_kwargs)
 
