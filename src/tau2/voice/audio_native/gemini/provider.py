@@ -6,6 +6,7 @@ Uses the google-genai library for real-time bidirectional audio communication.
 
 import asyncio
 import os
+import subprocess
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -295,9 +296,22 @@ class GeminiLiveProvider:
                         f"Created Vertex AI client for project {self.project_id}"
                     )
                 else:
+                    PROJECT_ID = "docker-rlef-exploration"
+                    result = subprocess.run(["gcloud", "auth", "application-default", "print-access-token"], capture_output=True, text=True, check=True)
+                    OAUTH_TOKEN = result.stdout.rstrip()
+                    headers = {
+                       'Content-Type': 'application/json',
+                       'Authorization': f'Bearer {OAUTH_TOKEN}',
+                       'X-Goog-User-Project': PROJECT_ID,
+                    }
+                    logger.debug("Gemini headers: " + str(headers))
                     # API key mode
                     self._client = genai.Client(
-                        http_options={"api_version": "v1beta"},
+                        http_options={
+                          'headers': headers,
+                          'base_url': 'https://generativelanguage.googleapis.com',
+                          'timeout': 600
+                        },
                         api_key=self.api_key,
                     )
                     logger.debug("Created Gemini AI Studio client with API key")
