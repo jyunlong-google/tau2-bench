@@ -20,7 +20,7 @@ class VoicePersona(BaseModel):
 
 
 MATT_DELANEY = VoicePersona(
-    elevenlabs_voice_id="EZfwTIuZL0WWIVnjSgTF",
+    elevenlabs_voice_id="uewKZS9zleqXmxPqYdF1",
     name="matt_delaney",
     display_name="Matt Delaney",
     short_description="Middle-aged white man from the American Midwest, calm and respectful",
@@ -40,7 +40,7 @@ You rarely use formal or stiff language ("considerable," "retrieve," "representa
 )
 
 LISA_BRENNER = VoicePersona(
-    elevenlabs_voice_id="avQFHuQU7IjJf0u5MMBq",
+    elevenlabs_voice_id="AsoKDpNALHullQK5FHUD",
     name="lisa_brenner",
     display_name="Lisa Brenner",
     short_description="White woman in her late 40s from a suburban area, tense and impatient",
@@ -62,7 +62,7 @@ You never sound relaxed. You never use slow, reflective speech. You never thank 
 )
 
 MILDRED_KAPLAN = VoicePersona(
-    elevenlabs_voice_id="oNqrZRHHLWtHYsVNkRqe",
+    elevenlabs_voice_id="1zKxVAM0vQxGEiAcRiPX",
     name="mildred_kaplan",
     display_name="Mildred Kaplan",
     short_description="Elderly white woman in her early 80s, needs help with technology",
@@ -71,7 +71,7 @@ MILDRED_KAPLAN = VoicePersona(
 )
 
 ARJUN_ROY = VoicePersona(
-    elevenlabs_voice_id="m1hMce9ingsjyIjkshRv",
+    elevenlabs_voice_id="ks4oUh3X0z8tbxsuKpLK",
     name="arjun_roy",
     display_name="Arjun Roy",
     short_description="Bengali man from Dhaka in his mid-30s, calm and direct",
@@ -80,7 +80,7 @@ ARJUN_ROY = VoicePersona(
 )
 
 WEI_LIN = VoicePersona(
-    elevenlabs_voice_id="GQ2S7ULnVjrOALFRfnsh",
+    elevenlabs_voice_id="1py1VHusGKQenT6eyngD",
     name="wei_lin",
     display_name="Wei Lin",
     short_description="Chinese woman from Sichuan in her late 20s, upbeat and matter-of-fact",
@@ -89,7 +89,7 @@ WEI_LIN = VoicePersona(
 )
 
 MAMADOU_DIALLO = VoicePersona(
-    elevenlabs_voice_id="ET3963lBcRmodt3ZaTBS",
+    elevenlabs_voice_id="tflYd5VAiwNVBPIpe43n",
     name="mamadou_diallo",
     display_name="Mamadou Diallo",
     short_description="Senegalese man in his mid-30s, hurried with French accent",
@@ -98,7 +98,7 @@ MAMADOU_DIALLO = VoicePersona(
 )
 
 PRIYA_PATIL = VoicePersona(
-    elevenlabs_voice_id="mnHhNJntmsPxJsZvYVM7",
+    elevenlabs_voice_id="djfmScaGSDESzfSYxI0K",
     name="priya_patil",
     display_name="Priya Patil",
     short_description="Maharashtrian woman in her early 30s, hurried and focused",
